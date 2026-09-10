@@ -317,12 +317,63 @@ module Nutrition =
         {|
             marginTop = 1
             marginBottom = 1
+            alignSelf = "flex-start"
         |}
 
     let private dividerSx =
         {|
             marginTop = 2
             marginBottom = 2
+        |}
+
+    let private ctaContainerSx =
+        {|
+            justifyContent = "center"
+            alignItems = "center"
+            marginTop = 8
+        |}
+
+    let private ctaButtonSx =
+        {|
+            minWidth = 220
+            paddingTop = 1.5
+            paddingBottom = 1.5
+        |}
+
+
+    /// Reads the already-formatted "volume" total off a `Totals` value (same extraction
+    /// as the print view's totals table), for display only — no re-parsing or arithmetic.
+    let private volumeDisplay (totals: Totals) =
+        match Totals.substanceToField totals "volume" with
+        | [||] -> None
+        | items ->
+            let s =
+                match items[items.Length - 1] with
+                | Normal s
+                | Bold s
+                | Italic s -> s
+
+            if s = "" then None else Some $"{s} ml/kg/dag"
+
+
+    // TEMPORARY — for local visual review only. The demo dataset has no nutrition
+    // products, so `volumeDisplay` never resolves to a real value here; this fallback
+    // lets the fluid-info line be previewed anyway. It is visually distinct (orange,
+    // italic, "(voorbeeld)" prefix) so a mock value can never be mistaken for a real
+    // one. Set `showMockFluidPreview` to false, or delete this and the fallback branch
+    // in `fluidInfo` below, once real data (or a script-reviewed calculation) is available.
+    let private showMockFluidPreview = true
+
+    let private mockFluidInfoSx =
+        {|
+            color = "warning.main"
+            fontStyle = "italic"
+        |}
+
+    let private fluidInfoSx =
+        {|
+            color = "text.secondary"
+            fontStyle = "normal"
         |}
 
 
@@ -1354,6 +1405,13 @@ module Nutrition =
         let nutritionPlan = envNutritionPlan.NutritionPlan
         let nutritionPlanMsg = envNutritionPlan.NutritionPlanMsg
 
+        // Already-computed medication fluid volume from the treatment plan (Behandelplan),
+        // shown next to the nutrition fluid volume so the prescriber can see both before
+        // adding parenterale voeding. Not summed here: each Totals.Volume is server-computed
+        // from its own order set, so combining them into one number belongs in that
+        // calculation, not in display code.
+        let orderPlan = (AppEnv.asEnv<AppEnv.IOrderPlan> props.appEnv).OrderPlan
+
         let localizationTerms =
             (AppEnv.asEnv<AppEnv.ILocalization> props.appEnv).LocalizationTerms
 
@@ -1387,7 +1445,7 @@ module Nutrition =
             | _ -> false
 
         let confirmDeleteTarget, setConfirmDeleteTarget = React.useState<string option> None
-        let enteralExpanded, setEnteralExpanded = React.useState true
+        let started, setStarted = React.useState false
         let printOpen, setPrintOpen = React.useState false
 
         let makeSlot wrapInAccordion plan nc =
@@ -1451,11 +1509,16 @@ module Nutrition =
                 let hasTPN = hasCategory plan NutritionCategory.TPN
                 let hasLipid = hasCategory plan NutritionCategory.Lipid
 
+                let enteralLabel = Terms.``Nutrition Enteral Feeding`` |> getTerm "Enterale Voeding"
+
+                let parenteralLabel =
+                    Terms.``Nutrition Parenteral Section`` |> getTerm "Totale Parenterale Voeding"
+
                 let enteralFeedingAddButton =
                     if not hasEnteral then
                         AddButton
                             {|
-                                label = Terms.``Nutrition Enteral Feeding`` |> getTerm "Enterale Voeding"
+                                label = enteralLabel
                                 onClick = fun () -> addContext plan NutritionCategory.EnteralFeeding
                             |}
                     else
@@ -1492,77 +1555,128 @@ module Nutrition =
                             |}
                     |]
 
-                let enteralAccordion =
-                    let summary =
-                        let adminSummaries =
-                            enteralContexts
-                            |> Array.choose (fun nc ->
-                                match nc.OrderContext.Scenarios with
-                                | [| sc |] when sc.Administration |> Array.isEmpty |> not ->
-                                    let blocks = sc.Administration |> TextBlock.flatten |> Array.collect id
-                                    renderAdminSummary (string nc.Id) sc.Order.Orderable.Name blocks |> Some
-                                | _ -> None
-                            )
+                let printDisabled = parenteralContexts |> Array.isEmpty
+
+                let fluidInfo =
+                    let realMedicationVolume =
+                        match orderPlan with
+                        | Resolved op
+                        | Recalculating op -> volumeDisplay op.Totals
+                        | _ -> None
+
+                    let realNutritionVolume = volumeDisplay plan.Totals
+
+                    let isMock =
+                        showMockFluidPreview
+                        && realMedicationVolume.IsNone
+                        && realNutritionVolume.IsNone
+
+                    let medicationVolume, nutritionVolume =
+                        if isMock then
+                            Some "42 ml/kg/dag", Some "18 ml/kg/dag"
+                        else
+                            realMedicationVolume, realNutritionVolume
+
+                    let parts =
+                        [|
+                            medicationVolume |> Option.map (fun s -> $"Medicatie: {s}")
+                            nutritionVolume |> Option.map (fun s -> $"Voeding: {s}")
+                        |]
+                        |> Array.choose id
+
+                    if parts |> Array.isEmpty then
+                        null
+                    else
+                        let prefix =
+                            if isMock then
+                                "(voorbeeld) Reeds toegediend vocht — "
+                            else
+                                "Reeds toegediend vocht — "
+
+                        let text = prefix + (parts |> String.concat " · ")
+                        let sx = if isMock then mockFluidInfoSx else fluidInfoSx
 
                         JSX.jsx
                             $"""
                         import Typography from '@mui/material/Typography';
-                        import Box from '@mui/material/Box';
-
-                        <Box sx={flexOverflowSx}>
-                            <Typography>{Terms.``Nutrition Enteral Feeding`` |> getTerm "Enterale Voeding"}</Typography>
-                            {adminSummaries |> unbox<seq<ReactElement>> |> React.Fragment}
-                        </Box>
+                        <Typography variant="body2" sx={sx}>
+                            {text}
+                        </Typography>
                         """
 
-                    let children =
+                let showSections = started || (plan.NutritionContexts |> Array.isEmpty |> not)
+
+                if not showSections then
+                    let ctaDirection = if isMobile then "column" else "row"
+
+                    JSX.jsx
+                        $"""
+                    import Stack from '@mui/material/Stack';
+                    import Button from '@mui/material/Button';
+                    import AddIcon from '@mui/icons-material/Add';
+
+                    <Stack direction={ctaDirection} spacing={3} sx={ctaContainerSx}>
+                        <Button
+                            variant="contained"
+                            size="large"
+                            startIcon={{<AddIcon />}}
+                            sx={ctaButtonSx}
+                            onClick={fun _ -> setStarted true}
+                        >
+                            {enteralLabel}
+                        </Button>
+                        <Button
+                            variant="contained"
+                            size="large"
+                            startIcon={{<AddIcon />}}
+                            sx={ctaButtonSx}
+                            onClick={fun _ -> setStarted true}
+                        >
+                            {parenteralLabel}
+                        </Button>
+                    </Stack>
+                    """
+                else
+                    let enteralSection =
                         JSX.jsx
                             $"""
                         import Stack from '@mui/material/Stack';
+                        import Typography from '@mui/material/Typography';
+
                         <Stack direction="column" spacing={{2}}>
+                            <Typography variant="subtitle1" sx={boldCellSx}>
+                                {enteralLabel}
+                            </Typography>
                             {enteralSlots |> unbox<seq<ReactElement>> |> React.Fragment}
                             {enteralFeedingAddButton}
                             {supplementAddButton}
                         </Stack>
                         """
 
-                    Components.Accordion.View
-                        {|
-                            expanded = enteralExpanded
-                            onChange = fun () -> setEnteralExpanded (not enteralExpanded)
-                            summary = summary
-                            children = children
-                            isMobile = isMobile
-                            detailsPaddingTop = if isMobile then None else Some 4
-                            ariaControls = None
-                            summaryId = None
-                        |}
+                    JSX.jsx
+                        $"""
+                    import Stack from '@mui/material/Stack';
+                    import Typography from '@mui/material/Typography';
+                    import Divider from '@mui/material/Divider';
+                    import Button from '@mui/material/Button';
+                    import PrintIcon from '@mui/icons-material/Print';
 
-                let printDisabled = parenteralContexts |> Array.isEmpty
-
-                JSX.jsx
-                    $"""
-                import Stack from '@mui/material/Stack';
-                import Typography from '@mui/material/Typography';
-                import Divider from '@mui/material/Divider';
-                import IconButton from '@mui/material/IconButton';
-                import PrintIcon from '@mui/icons-material/Print';
-
-                <Stack direction="column" spacing={1}>
-                    {enteralAccordion}
-                    <Divider sx={dividerSx} />
-                    <Stack direction="row" sx={alignCenterSx} spacing={1}>
-                        <Typography variant="h6">{Terms.``Nutrition Parenteral Section`` |> getTerm "Parenteraal"}</Typography>
-                        <Button color="primary" size="small" disabled={printDisabled} onClick={fun _ -> setPrintOpen true} startIcon={{<PrintIcon />}}>
-                            {Terms.Print |> getTerm "Print"}
-                        </Button>
+                    <Stack direction="column" spacing={1}>
+                        {enteralSection}
+                        <Divider sx={dividerSx} />
+                        <Stack direction="row" sx={alignCenterSx} spacing={1}>
+                            <Typography variant="subtitle1" sx={boldCellSx}>{parenteralLabel}</Typography>
+                            <Button color="primary" size="small" disabled={printDisabled} onClick={fun _ -> setPrintOpen true} startIcon={{<PrintIcon />}}>
+                                {Terms.Print |> getTerm "Print"}
+                            </Button>
+                        </Stack>
+                        {fluidInfo}
+                        {parenteralSlots |> unbox<seq<ReactElement>> |> React.Fragment}
+                        <Stack direction="row" spacing={1}>
+                            {parenteralAddButtons |> unbox<seq<ReactElement>> |> React.Fragment}
+                        </Stack>
                     </Stack>
-                    {parenteralSlots |> unbox<seq<ReactElement>> |> React.Fragment}
-                    <Stack direction="row" spacing={1}>
-                        {parenteralAddButtons |> unbox<seq<ReactElement>> |> React.Fragment}
-                    </Stack>
-                </Stack>
-                """
+                    """
             | _ -> null
 
         let confirmDeleteDialog =
