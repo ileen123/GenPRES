@@ -1,0 +1,105 @@
+name: Sync upstream
+
+# Periodically checks informedica/GenPRES (the fork's upstream) for commits
+# that this fork's master does not have yet, and opens a pull request with
+# those changes merged into a sync branch. The PR is never auto-merged -
+# review and merge it by hand when you want the changes.
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # daily at 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/informedica/GenPRES.git
+          git fetch upstream master
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          count=$(git rev-list --count HEAD..upstream/master)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare sync branch
+        if: steps.check.outputs.count != '0'
+        id: prep
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B upstream-sync
+          if git merge upstream/master --no-edit; then
+            git push origin upstream-sync --force
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write commit log
+        if: steps.check.outputs.count != '0'
+        run: git log --pretty='- %h %s (%an)' HEAD..upstream/master > /tmp/upstream-commits.md
+
+      - name: Open or update sync PR
+        if: steps.check.outputs.count != '0' && steps.prep.outputs.conflict == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "New commits from informedica/GenPRES not yet in this fork's master:"
+            echo
+            cat /tmp/upstream-commits.md
+            echo
+            echo "This branch merges those commits on top of master. Review and merge when ready."
+          } > /tmp/pr-body.md
+
+          if gh pr list --head upstream-sync --state open --json number --jq '.[0].number' | grep -q .; then
+            gh pr edit upstream-sync --body-file /tmp/pr-body.md
+          else
+            gh pr create \
+              --base master \
+              --head upstream-sync \
+              --title "chore: sync with upstream informedica/GenPRES" \
+              --body-file /tmp/pr-body.md
+          fi
+
+      - name: Open conflict issue
+        if: steps.check.outputs.count != '0' && steps.prep.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "Merging upstream/master into master produced conflicts and could not be automated."
+            echo
+            echo "New commits from informedica/GenPRES:"
+            echo
+            cat /tmp/upstream-commits.md
+            echo
+            echo "Resolve manually:"
+            echo '```'
+            echo "git fetch upstream master"
+            echo "git checkout -B upstream-sync master"
+            echo "git merge upstream/master"
+            echo '```'
+          } > /tmp/issue-body.md
+
+          if gh issue list --search "Upstream sync has conflicts in:title" --state open --json number --jq '.[0].number' | grep -q .; then
+            :
+          else
+            gh issue create --title "Upstream sync has conflicts" --body-file /tmp/issue-body.md
+          fi
