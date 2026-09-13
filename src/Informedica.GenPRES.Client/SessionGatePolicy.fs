@@ -1,5 +1,5 @@
 /// <summary>
-/// The session gate's policy (plan 409, uc-01 Refusals): for every session phase, what the gate
+/// The session gate's policy: for every session phase, what the gate
 /// says and what it offers. Pure F#, no React, so it runs under Expecto next to the machine;
 /// Views/SessionGate.fs renders it. The texts are `Terms`, translated by the caller: the view
 /// passes the sheet lookup, the tests pass `english`.
@@ -18,13 +18,27 @@ type Action =
     | ContinueWithoutLaunch
 
 
-/// One gate: a title, a body, whether work is in progress, and the actions.
+/// The enrolment form: the labels of its three fields and its button, and what the
+/// server said about the last submission, if anything.
+type EnrolmentForm =
+    {
+        Code: string
+        Pin: string
+        Repeat: string
+        Submit: string
+        Error: string option
+    }
+
+
+/// One gate: a title, a body, whether work is in progress, the actions, and the form when the
+/// launch waits on a PIN.
 type Gate =
     {
         Title: string
         Body: string
         Busy: bool
         Actions: Action list
+        Form: EnrolmentForm option
     }
 
 
@@ -51,13 +65,31 @@ let english (term: Terms) =
         "You have no role in GenPRES. You can continue without a launch: no patient is carried over."
     | Terms.``Session Refusal Wrong Patient`` ->
         "The patient active in MainEHR is not the patient of this launch. Activate the right patient and open GenPRES again from MainEHR."
-    | Terms.``Session Refusal Enrolment`` ->
-        "A PIN has to be set before prescribing. Enrolment is not available yet. Open GenPRES again from MainEHR."
+    | Terms.``Session Refusal Enrolment`` -> "A PIN has to be set before prescribing. Open GenPRES again from MainEHR."
     | Terms.``Session Try Again`` -> "Try again"
     | Terms.``Session Continue Without Launch`` -> "Continue without launch"
     | Terms.``Session Close`` -> "Close session"
     | Terms.``Session Role Prescriber`` -> "Prescriber"
     | Terms.``Session Role Reader`` -> "Reader"
+    | Terms.``Session Gate Ended`` -> "Your session was ended"
+    | Terms.``Session Ending Superseded`` -> "Another launch of yours opened a newer session, and this one was closed."
+    | Terms.``Session Ending Pin Limit`` -> "The PIN was entered wrong three times, and signing is locked for a while."
+    | Terms.``Session Gate Enrolment`` -> "Set a PIN to continue"
+    | Terms.``Session Gate Enrolment Text`` ->
+        "Welcome, {0}. A confirmation code was mailed to {1}. Enter it together with the PIN of your choice: four to six digits."
+    | Terms.``Session Enrolment Code`` -> "Confirmation code"
+    | Terms.``Session Enrolment Pin`` -> "PIN"
+    | Terms.``Session Enrolment Pin Repeat`` -> "Repeat the PIN"
+    | Terms.``Session Enrolment Submit`` -> "Set PIN"
+    | Terms.``Session Enrolment Code Format`` -> "The confirmation code has six digits."
+    | Terms.``Session Enrolment Pin Format`` -> "The PIN has four to six digits."
+    | Terms.``Session Enrolment Pins Differ`` -> "The two PINs differ."
+    | Terms.``Session Enrolment Wrong Code`` -> "The code is not right. {0} tries left."
+    | Terms.``Session Enrolment Code Void`` -> "The code is void after three wrong tries."
+    | Terms.``Session Enrolment Expired`` -> "The enrolment has expired."
+    | Terms.``Session Newer Version`` -> "{0} signed a newer version at {1}."
+    | Terms.``Session Open Newest`` -> "Open the newest version"
+    | Terms.``Session Version Opened`` -> "Version {0} by {1} is now open."
     | _ -> $"{term}"
 
 
@@ -98,6 +130,38 @@ let refusalBody (tr: Terms -> string) refusal =
     | LaunchRefusal.EnrolmentRequired -> [ tr Terms.``Session Refusal Enrolment`` ]
 
 
+/// Digits only, of a given length range: what the form checks before the server does.
+let digits (min: int) (max: int) (s: string) =
+    not (isNull s)
+    && s.Length >= min
+    && s.Length <= max
+    && s |> Seq.forall (fun c -> c >= '0' && c <= '9')
+
+
+/// The form's own check before a submission: the code has six digits, the PIN four to
+/// six, and the repeat agrees. The first thing wrong, as a translated sentence; None when the
+/// submission can go.
+let formError (tr: Terms -> string) (code: string) (pin: string) (repeat: string) : string option =
+    if not (digits 6 6 code) then
+        Some(tr Terms.``Session Enrolment Code Format``)
+    elif not (digits 4 6 pin) then
+        Some(tr Terms.``Session Enrolment Pin Format``)
+    elif pin <> repeat then
+        Some(tr Terms.``Session Enrolment Pins Differ``)
+    else
+        None
+
+
+/// What the server said about a submission that left the form open.
+let refusalSentence (tr: Terms -> string) (refusal: PinRefusal) =
+    match refusal with
+    | PinRefusal.WrongCode left -> tr Terms.``Session Enrolment Wrong Code`` |> fill [ $"%i{left}" ]
+    | PinRefusal.PinFormat -> tr Terms.``Session Enrolment Pin Format``
+    | PinRefusal.CodeVoid -> tr Terms.``Session Enrolment Code Void``
+    | PinRefusal.AttemptExpired -> tr Terms.``Session Enrolment Expired``
+    | PinRefusal.WrongActivePatient -> tr Terms.``Session Refusal Wrong Patient``
+
+
 /// Whether the gate is over the app: false while the app is usable (anonymous, open, closing).
 let isGated (session: Session) =
     match session with
@@ -107,7 +171,11 @@ let isGated (session: Session) =
     | Session.Launching _
     | Session.Resuming
     | Session.Unreachable _
-    | Session.Refused _ -> true
+    | Session.Refused _
+    | Session.Ended _
+    | Session.Enrolling _
+    | Session.SupplyingPin _
+    | Session.EnrolmentFailed _ -> true
 
 
 /// The gate for a session phase, or None when the app is usable (anonymous, open, closing).
@@ -122,6 +190,7 @@ let gateFor (tr: Terms -> string) (session: Session) : Gate option =
                     |> fill [ $"%i{attempt}"; $"%i{Session.maxAttempts}" ]
                 Busy = true
                 Actions = []
+                Form = None
             }
     | Session.Resuming ->
         Some
@@ -130,6 +199,7 @@ let gateFor (tr: Terms -> string) (session: Session) : Gate option =
                 Body = tr Terms.``Session Gate Resuming Text``
                 Busy = true
                 Actions = []
+                Form = None
             }
     | Session.Unreachable(_, _, attempts) ->
         Some
@@ -143,6 +213,7 @@ let gateFor (tr: Terms -> string) (session: Session) : Gate option =
                         ]
                 Busy = false
                 Actions = [ Action.Retry ]
+                Form = None
             }
     | Session.Refused(refusal, retry) ->
         Some
@@ -165,6 +236,69 @@ let gateFor (tr: Terms -> string) (session: Session) : Gate option =
                         | _, Some _ -> Action.Retry
                         | _ -> ()
                     ]
+                Form = None
+            }
+    | Session.Ended ending ->
+        Some
+            {
+                Title = tr Terms.``Session Gate Ended``
+                Body =
+                    sentences
+                        [
+                            match ending with
+                            | SessionEnding.SupersededByLaunch -> tr Terms.``Session Ending Superseded``
+                            | SessionEnding.WrongPinLimit -> tr Terms.``Session Ending Pin Limit``
+                            tr Terms.``Session Relaunch``
+                        ]
+                Busy = false
+                Actions = [ Action.ContinueWithoutLaunch ]
+                Form = None
+            }
+    // the launch waits on a PIN; the form asks for the mailed code and the PIN twice
+    | Session.Enrolling(pending, refusal) ->
+        Some
+            {
+                Title = tr Terms.``Session Gate Enrolment``
+                Body =
+                    tr Terms.``Session Gate Enrolment Text``
+                    |> fill [ pending.DisplayName; pending.MailHint ]
+                Busy = false
+                Actions = []
+                Form =
+                    Some
+                        {
+                            Code = tr Terms.``Session Enrolment Code``
+                            Pin = tr Terms.``Session Enrolment Pin``
+                            Repeat = tr Terms.``Session Enrolment Pin Repeat``
+                            Submit = tr Terms.``Session Enrolment Submit``
+                            Error = refusal |> Option.map (refusalSentence tr)
+                        }
+            }
+    | Session.SupplyingPin pending ->
+        Some
+            {
+                Title = tr Terms.``Session Gate Enrolment``
+                Body =
+                    tr Terms.``Session Gate Enrolment Text``
+                    |> fill [ pending.DisplayName; pending.MailHint ]
+                Busy = true
+                Actions = []
+                Form = None
+            }
+    // the enrolment ended without a Session: the code void or expired, or the Patient moved
+    | Session.EnrolmentFailed refusal ->
+        Some
+            {
+                Title = tr Terms.``Session Gate Refused``
+                Body =
+                    sentences
+                        [
+                            refusalSentence tr refusal
+                            tr Terms.``Session Relaunch``
+                        ]
+                Busy = false
+                Actions = []
+                Form = None
             }
     | Session.Anonymous
     | Session.Open _

@@ -51,6 +51,53 @@ type SessionTerms =
     | ``Session Close``
     | ``Session Role Prescriber``
     | ``Session Role Reader``
+    // the gate after the server ended the Session (Rule 11, plan 605 PR 4)
+    | ``Session Gate Ended``
+    | ``Session Ending Superseded``
+    // Rule 28 (UC-3, plan 622 PR 1): the Session ended at the third wrong PIN
+    | ``Session Ending Pin Limit``
+    // the enrolment form (UC-2, plan 615 PR 3): title, body with {0} the name and {1} the
+    // hinted mail address, the three field labels, the button, and one sentence per refusal
+    | ``Session Gate Enrolment``
+    | ``Session Gate Enrolment Text``
+    | ``Session Enrolment Code``
+    | ``Session Enrolment Pin``
+    | ``Session Enrolment Pin Repeat``
+    | ``Session Enrolment Submit``
+    | ``Session Enrolment Code Format``
+    | ``Session Enrolment Pin Format``
+    | ``Session Enrolment Pins Differ``
+    | ``Session Enrolment Wrong Code``
+    | ``Session Enrolment Code Void``
+    | ``Session Enrolment Expired``
+    // signing (UC-3, plan 622 PR 5): the button, the dialog, the data notice (Rule 44), the
+    // signed sentence with {0} the version and {1} the signer, and one sentence per refusal
+    | ``Signing Sign``
+    | ``Signing Dialog Title``
+    | ``Signing Dialog Text``
+    | ``Signing Pin``
+    | ``Signing Cancel``
+    | ``Signing Proceed``
+    | ``Signing Signed``
+    | ``Signing Data Changed``
+    | ``Signing Data Unverified``
+    | ``Signing Refusal No Session``
+    | ``Signing Refusal No Patient``
+    | ``Signing Refusal Not Prescriber``
+    | ``Signing Refusal Blocked``
+    | ``Signing Refusal Stale Token``
+    | ``Signing Refusal Challenge Mismatch``
+    | ``Signing Refusal Challenge Expired``
+    | ``Signing Refusal Pin Wrong``
+    | ``Signing Refusal Pin Limit``
+    | ``Signing Refusal Locked``
+    | ``Signing Send Failed``
+    // Rules 21, 22 (plan 635 PR 4): the record moved on, told once per version with {0} who
+    // signed it and {1} when; the button that takes the version up (UC-4 step 4); and what
+    // is told once it is open, {0} the version number and {1} who signed it
+    | ``Session Newer Version``
+    | ``Session Open Newest``
+    | ``Session Version Opened``
 
 
 /// The English defaults: the strings the client shows today, verbatim.
@@ -74,13 +121,55 @@ let english term =
         "You have no role in GenPRES. You can continue without a launch: no patient is carried over."
     | ``Session Refusal Wrong Patient`` ->
         "The patient active in MainEHR is not the patient of this launch. Activate the right patient and open GenPRES again from MainEHR."
-    | ``Session Refusal Enrolment`` ->
-        "A PIN has to be set before prescribing. Enrolment is not available yet. Open GenPRES again from MainEHR."
+    | ``Session Refusal Enrolment`` -> "A PIN has to be set before prescribing. Open GenPRES again from MainEHR."
     | ``Session Try Again`` -> "Try again"
     | ``Session Continue Without Launch`` -> "Continue without launch"
     | ``Session Close`` -> "Close session"
     | ``Session Role Prescriber`` -> "Prescriber"
     | ``Session Role Reader`` -> "Reader"
+    | ``Session Gate Ended`` -> "Your session was ended"
+    | ``Session Ending Superseded`` ->
+        "Another launch of yours opened a newer session, and this one was closed."
+    | ``Session Ending Pin Limit`` -> "The PIN was entered wrong three times, and signing is locked for a while."
+    | ``Session Gate Enrolment`` -> "Set a PIN to continue"
+    | ``Session Gate Enrolment Text`` ->
+        "Welcome, {0}. A confirmation code was mailed to {1}. Enter it together with the PIN of your choice: four to six digits."
+    | ``Session Enrolment Code`` -> "Confirmation code"
+    | ``Session Enrolment Pin`` -> "PIN"
+    | ``Session Enrolment Pin Repeat`` -> "Repeat the PIN"
+    | ``Session Enrolment Submit`` -> "Set PIN"
+    | ``Session Enrolment Code Format`` -> "The confirmation code has six digits."
+    | ``Session Enrolment Pin Format`` -> "The PIN has four to six digits."
+    | ``Session Enrolment Pins Differ`` -> "The two PINs differ."
+    | ``Session Enrolment Wrong Code`` -> "The code is not right. {0} tries left."
+    | ``Session Enrolment Code Void`` -> "The code is void after three wrong tries."
+    | ``Session Enrolment Expired`` -> "The enrolment has expired."
+    | ``Signing Sign`` -> "Sign"
+    | ``Signing Dialog Title`` -> "Sign the order plan"
+    | ``Signing Dialog Text`` -> "Sign the orders as shown with your PIN, or cancel and edit."
+    | ``Signing Pin`` -> "PIN"
+    | ``Signing Cancel`` -> "Cancel"
+    | ``Signing Proceed`` -> "Continue"
+    | ``Signing Signed`` -> "Version {0} was signed by {1}."
+    | ``Signing Data Changed`` ->
+        "The patient data changed since the session opened. It is shown as it stands now; continue to sign over it, or cancel."
+    | ``Signing Data Unverified`` ->
+        "The patient data could not be verified. Continue to sign over the data the session opened with, or cancel."
+    | ``Signing Refusal No Session`` -> "There is no session to sign in. Open GenPRES again from MainEHR."
+    | ``Signing Refusal No Patient`` -> "The plan is not over this session's patient."
+    | ``Signing Refusal Not Prescriber`` -> "Only a Prescriber can sign."
+    | ``Signing Refusal Blocked`` -> "{0} signed a newer version at {1}. Open the patient again to continue from it."
+    | ``Signing Refusal Stale Token`` -> "The session is not current. Reload the page."
+    | ``Signing Refusal Challenge Mismatch`` -> "The plan changed since it was shown. Sign again."
+    | ``Signing Refusal Challenge Expired`` -> "The signature took too long. Sign again."
+    | ``Signing Refusal Pin Wrong`` -> "The PIN is not right. {0} tries left."
+    | ``Signing Refusal Pin Limit`` ->
+        "The PIN was entered wrong three times. Your session was ended and signing is locked for a while."
+    | ``Signing Refusal Locked`` -> "Signing is locked until {0}."
+    | ``Signing Send Failed`` -> "The signature could not be sent. Try again."
+    | ``Session Newer Version`` -> "{0} signed a newer version at {1}."
+    | ``Session Open Newest`` -> "Open the newest version"
+    | ``Session Version Opened`` -> "Version {0} by {1} is now open."
 
 
 /// Dutch, for the sheet; the other four languages stay empty and fall back to English.
@@ -105,12 +194,56 @@ let dutch term =
     | ``Session Refusal Wrong Patient`` ->
         "De patiënt die actief is in MainEHR is niet de patiënt van deze launch. Activeer de juiste patiënt en open GenPRES opnieuw vanuit MainEHR."
     | ``Session Refusal Enrolment`` ->
-        "Er moet een pincode worden ingesteld voordat u kunt voorschrijven. Inschrijven is nog niet beschikbaar. Open GenPRES opnieuw vanuit MainEHR."
+        "Er moet een pincode worden ingesteld voordat u kunt voorschrijven. Open GenPRES opnieuw vanuit MainEHR."
     | ``Session Try Again`` -> "Probeer opnieuw"
     | ``Session Continue Without Launch`` -> "Doorgaan zonder launch"
     | ``Session Close`` -> "Sessie sluiten"
     | ``Session Role Prescriber`` -> "Voorschrijver"
     | ``Session Role Reader`` -> "Lezer"
+    | ``Session Gate Ended`` -> "Uw sessie is beëindigd"
+    | ``Session Ending Superseded`` ->
+        "Een andere start van u heeft een nieuwere sessie geopend; deze sessie is gesloten."
+    | ``Session Ending Pin Limit`` -> "De pincode is drie keer verkeerd ingevoerd; ondertekenen is een tijdje geblokkeerd."
+    | ``Session Gate Enrolment`` -> "Stel een pincode in om verder te gaan"
+    | ``Session Gate Enrolment Text`` ->
+        "Welkom, {0}. Er is een bevestigingscode gemaild naar {1}. Voer die in samen met de pincode van uw keuze: vier tot zes cijfers."
+    | ``Session Enrolment Code`` -> "Bevestigingscode"
+    | ``Session Enrolment Pin`` -> "Pincode"
+    | ``Session Enrolment Pin Repeat`` -> "Herhaal de pincode"
+    | ``Session Enrolment Submit`` -> "Pincode instellen"
+    | ``Session Enrolment Code Format`` -> "De bevestigingscode bestaat uit zes cijfers."
+    | ``Session Enrolment Pin Format`` -> "De pincode bestaat uit vier tot zes cijfers."
+    | ``Session Enrolment Pins Differ`` -> "De twee pincodes verschillen."
+    | ``Session Enrolment Wrong Code`` -> "De code klopt niet. Nog {0} pogingen."
+    | ``Session Enrolment Code Void`` -> "De code is na drie verkeerde pogingen niet meer geldig."
+    | ``Session Enrolment Expired`` -> "De inschrijving is verlopen."
+    | ``Signing Sign`` -> "Ondertekenen"
+    | ``Signing Dialog Title`` -> "Onderteken het voorschrijfplan"
+    | ``Signing Dialog Text`` -> "Onderteken de voorschriften zoals getoond met uw pincode, of annuleer en pas aan."
+    | ``Signing Pin`` -> "Pincode"
+    | ``Signing Cancel`` -> "Annuleren"
+    | ``Signing Proceed`` -> "Doorgaan"
+    | ``Signing Signed`` -> "Versie {0} is ondertekend door {1}."
+    | ``Signing Data Changed`` ->
+        "De patiëntgegevens zijn gewijzigd sinds de sessie werd geopend. Ze worden getoond zoals ze nu zijn; ga door om daarover te ondertekenen, of annuleer."
+    | ``Signing Data Unverified`` ->
+        "De patiëntgegevens konden niet worden geverifieerd. Ga door om te ondertekenen over de gegevens waarmee de sessie is geopend, of annuleer."
+    | ``Signing Refusal No Session`` -> "Er is geen sessie om in te ondertekenen. Open GenPRES opnieuw vanuit MainEHR."
+    | ``Signing Refusal No Patient`` -> "Het plan hoort niet bij de patiënt van deze sessie."
+    | ``Signing Refusal Not Prescriber`` -> "Alleen een voorschrijver kan ondertekenen."
+    | ``Signing Refusal Blocked`` ->
+        "{0} heeft om {1} een nieuwere versie ondertekend. Open de patiënt opnieuw om daarvan verder te gaan."
+    | ``Signing Refusal Stale Token`` -> "De sessie is niet actueel. Laad de pagina opnieuw."
+    | ``Signing Refusal Challenge Mismatch`` -> "Het plan is gewijzigd sinds het werd getoond. Onderteken opnieuw."
+    | ``Signing Refusal Challenge Expired`` -> "Het ondertekenen duurde te lang. Onderteken opnieuw."
+    | ``Signing Refusal Pin Wrong`` -> "De pincode klopt niet. Nog {0} pogingen."
+    | ``Signing Refusal Pin Limit`` ->
+        "De pincode is drie keer verkeerd ingevoerd. Uw sessie is beëindigd en ondertekenen is een tijdje geblokkeerd."
+    | ``Signing Refusal Locked`` -> "Ondertekenen is geblokkeerd tot {0}."
+    | ``Signing Send Failed`` -> "De handtekening kon niet worden verstuurd. Probeer het opnieuw."
+    | ``Session Newer Version`` -> "{0} heeft om {1} een nieuwere versie ondertekend."
+    | ``Session Open Newest`` -> "Open de nieuwste versie"
+    | ``Session Version Opened`` -> "Versie {0} van {1} is nu geopend."
 
 
 let all =
@@ -239,7 +372,7 @@ let tests =
                 |> Expect.equal "distinct keys" all.Length
             }
 
-            test "placeholders appear only in the two attempt texts, in both languages" {
+            test "placeholders appear only in the attempt, enrolment, wrong-code and signing texts, in both languages" {
                 let withPlaceholders =
                     all
                     |> Array.filter (fun t -> (english t).Contains "{0}" || (dutch t).Contains "{0}")
@@ -248,10 +381,31 @@ let tests =
                 withPlaceholders
                 |> Expect.equal
                     "placeholders"
-                    ([| ``Session Gate Opening Text``; ``Session Gate Unreachable Text`` |] |> Array.sort)
+                    ([|
+                        ``Session Gate Opening Text``
+                        ``Session Gate Unreachable Text``
+                        ``Session Gate Enrolment Text``
+                        ``Session Enrolment Wrong Code``
+                        ``Signing Signed``
+                        ``Signing Refusal Blocked``
+                        ``Signing Refusal Pin Wrong``
+                        ``Signing Refusal Locked``
+                        ``Session Newer Version``
+                        ``Session Version Opened``
+                     |]
+                     |> Array.sort)
 
-                (english ``Session Gate Opening Text``).Contains "{1}" |> Expect.isTrue "{1} en"
-                (dutch ``Session Gate Opening Text``).Contains "{1}" |> Expect.isTrue "{1} nl"
+                for t in
+                    [
+                        ``Session Gate Opening Text``
+                        ``Session Gate Enrolment Text``
+                        ``Signing Signed``
+                        ``Signing Refusal Blocked``
+                        ``Session Newer Version``
+                        ``Session Version Opened``
+                    ] do
+                    (english t).Contains "{1}" |> Expect.isTrue $"{{1}} en {t}"
+                    (dutch t).Contains "{1}" |> Expect.isTrue $"{{1}} nl {t}"
             }
 
             test "fill replaces the placeholders" {
@@ -273,4 +427,67 @@ let tests =
         ]
 
 
-runTestsWithCLIArgs [] [||] (testList "Localization.fsx" [ tests; parseTests ]) |> ignore
+// ---------------------------------------------------------------------------------------------
+// Issue #633: the page term ``Treatment Plan`` becomes ``Order Plan``. The code's type has been
+// `OrderPlan` since 9c0d573e and the integration design followed (#632); the term key of the
+// page title is the last place with the old word. The key is the case name, so the `Terms`
+// case, the `Global.pageToString` arm and the sheet row all change together. The English and
+// the Dutch value change (the page title is "Order Plan" in both); the other four are the old
+// row's, verbatim.
+// ---------------------------------------------------------------------------------------------
+
+/// The row as the sheet and `data/localization/*.tsv` should read after the rename.
+let orderPlanRow =
+    [|
+        "Order Plan"
+        "Order Plan"
+        "Order Plan"
+        "Plan de traitement"
+        "Behandlungsplan"
+        "Plan de tratamiento"
+        "Piano di trattamento"
+    |]
+
+
+/// The row it replaces.
+let treatmentPlanRow =
+    orderPlanRow
+    |> Array.mapi (fun i s ->
+        match i with
+        | 0
+        | 1 -> "Treatment Plan"
+        | 2 -> "Behandel Plan"
+        | _ -> s
+    )
+
+
+let renameTests =
+    testList
+        "order plan term"
+        [
+            test "the new key resolves in every language" {
+                for l in languages do
+                    getTerm [| orderPlanRow |] l "Order Plan"
+                    |> Expect.isSome $"Order Plan in {l}"
+            }
+
+            test "the new row differs from the old one in the key, the English and the Dutch value only" {
+                Array.zip treatmentPlanRow orderPlanRow
+                |> Array.indexed
+                |> Array.filter (fun (_, (a, b)) -> a <> b)
+                |> Array.map fst
+                |> Expect.equal "changed columns" [| 0; 1; 2 |]
+            }
+
+            test "the old key no longer resolves once the row is replaced" {
+                getTerm [| orderPlanRow |] English "Treatment Plan"
+                |> Expect.isNone "Treatment Plan"
+            }
+        ]
+
+
+let printRenamedRow () =
+    orderPlanRow |> String.concat "\t" |> printfn "%s"
+
+
+runTestsWithCLIArgs [] [||] (testList "Localization.fsx" [ tests; parseTests; renameTests ]) |> ignore

@@ -75,7 +75,7 @@ type Terms =
     | ``Order Drip rate``
     | ``Order Administration time``
     | ``Nutrition``
-    | ``Treatment Plan``
+    | ``Order Plan``
     | ``Formulary``
     | ``Formulary Medications``
     | ``Formulary Indications``
@@ -135,7 +135,7 @@ type Terms =
     | ``Nutrition Remove Enteral Text``
     // Interactions
     | ``Interactions Medication``
-    // Session (plan 409): the gate and the session menu
+    // Session: the gate and the session menu
     | ``Session Gate Opening``
     | ``Session Gate Opening Text``
     | ``Session Gate Resuming``
@@ -158,6 +158,52 @@ type Terms =
     | ``Session Close``
     | ``Session Role Prescriber``
     | ``Session Role Reader``
+    // the gate after the server ended the Session
+    | ``Session Gate Ended``
+    | ``Session Ending Superseded``
+    // the Session ended at the third wrong PIN
+    | ``Session Ending Pin Limit``
+    // the enrolment form: title, body with {0} the name and {1} the hinted
+    // mail address, the three field labels, the button, and one sentence per refusal
+    | ``Session Gate Enrolment``
+    | ``Session Gate Enrolment Text``
+    | ``Session Enrolment Code``
+    | ``Session Enrolment Pin``
+    | ``Session Enrolment Pin Repeat``
+    | ``Session Enrolment Submit``
+    | ``Session Enrolment Code Format``
+    | ``Session Enrolment Pin Format``
+    | ``Session Enrolment Pins Differ``
+    | ``Session Enrolment Wrong Code``
+    | ``Session Enrolment Code Void``
+    | ``Session Enrolment Expired``
+    // signing: the button, the dialog, the data notice, the signed
+    // sentence with {0} the version and {1} the signer, and one sentence per refusal
+    | ``Signing Sign``
+    | ``Signing Dialog Title``
+    | ``Signing Dialog Text``
+    | ``Signing Pin``
+    | ``Signing Cancel``
+    | ``Signing Proceed``
+    | ``Signing Signed``
+    | ``Signing Data Changed``
+    | ``Signing Data Unverified``
+    | ``Signing Refusal No Session``
+    | ``Signing Refusal No Patient``
+    | ``Signing Refusal Not Prescriber``
+    | ``Signing Refusal Blocked``
+    | ``Signing Refusal Stale Token``
+    | ``Signing Refusal Challenge Mismatch``
+    | ``Signing Refusal Challenge Expired``
+    | ``Signing Refusal Pin Wrong``
+    | ``Signing Refusal Pin Limit``
+    | ``Signing Refusal Locked``
+    | ``Signing Send Failed``
+    // the record moved on, told once per version; the button that takes the version up;
+    // what is told once it is open
+    | ``Session Newer Version``
+    | ``Session Open Newest``
+    | ``Session Version Opened``
 
 
 module Localization =
